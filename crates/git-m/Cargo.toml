@@ -1,0 +1,13 @@
+[package]
+name        = "git-m"
+description = "git-m"
+edition     = { workspace = true }
+license     = { workspace = true }
+version     = { workspace = true }
+
+
+[lints]
+workspace = true
+
+
+[dependencies]
