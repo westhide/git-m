@@ -1,5 +1,5 @@
-use git_m::command::Opts;
+use git_m::opts::Opts;
 
 pub fn main() {
-    let opts = Opts::new();
+    let _opts = Opts::default();
 }

@@ -10,9 +10,9 @@ pub struct Opts {
     pub action: Action,
 }
 
-impl Opts {
-    pub fn new() -> Opts {
-        Opts::parse()
+impl Default for Opts {
+    fn default() -> Self {
+        Self::parse()
     }
 }
 
