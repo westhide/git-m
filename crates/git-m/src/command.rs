@@ -1,44 +1,43 @@
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 
-#[derive(Parser)]
-#[clap(
-    name = clap::crate_name!(),
-    about = clap::crate_description!(),
-    long_version = clap::crate_version!(),
-    propagate_version = true,
-)]
+#[derive(Debug, Parser)]
+#[command(about, version, propagate_version = true)]
 pub struct Opts {
-    #[clap(short, long, default_value = "gm.toml", help = "Config file")]
+    #[arg(short, long, default_value = "gm.toml", help = "Config file")]
     pub config: String,
 
-    #[clap(subcommand)]
+    #[command(subcommand)]
     pub action: Action,
 }
 
-#[derive(Parser)]
-pub enum Action {
-    Init(Init),
+impl Opts {
+    pub fn new() -> Opts {
+        Opts::parse()
+    }
 }
 
-#[derive(Parser)]
-#[clap(about = "Init")]
-pub struct Init {
+#[derive(Debug, Subcommand)]
+pub enum Action {
+    Init(InitOpts),
+    List(ListOpts),
+}
+
+#[derive(Debug, Args)]
+#[command(about = "init")]
+pub struct InitOpts {
     #[clap(subcommand)]
     pub action: InitAction,
 }
 
-#[derive(Parser)]
+#[derive(Debug, Subcommand)]
 pub enum InitAction {
-    Sync(InitSync),
+    Sync(InitSyncOpts),
 }
 
-#[derive(Parser)]
-#[clap(about = "Sync")]
-pub struct InitSync {
-    #[clap(short, long, default_value = "gm.toml", help = "Config file")]
-    pub config: String,
-}
+#[derive(Debug, Args)]
+#[command(about = "sync")]
+pub struct InitSyncOpts {}
 
-pub fn parse() -> Opts {
-    Opts::parse()
-}
+#[derive(Debug, Args)]
+#[command(about = "list")]
+pub struct ListOpts {}
