@@ -1,5 +1,7 @@
-use git_m::opts::Opts;
+use git_m::{cli::Cli, opts::Opts};
 
 pub fn main() {
-    let _opts = Opts::default();
+    let cli = Cli::default();
+    let opts = Opts::from(&cli);
+    cli.event
 }
