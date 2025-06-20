@@ -1,5 +1,9 @@
-pub trait Executor {
+use std::fmt::Debug;
+
+pub trait Executor: Debug + Clone {
     type Event;
 
-    fn execute(&self, event: Self::Event);
+    type Return;
+
+    fn execute(&self, event: Self::Event) -> Self::Return;
 }
