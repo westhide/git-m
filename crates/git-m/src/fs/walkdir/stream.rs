@@ -1,5 +1,4 @@
 use std::{
-    fmt::Debug,
     fs::read_dir,
     mem::ManuallyDrop,
     path::{Path, PathBuf},
@@ -13,61 +12,20 @@ use tokio::task::{JoinHandle, spawn_blocking};
 
 use crate::error::Result;
 
-#[derive(Debug, Default)]
-pub struct Options {
-    pub depth: u32,
-}
-
 #[derive(Debug)]
-pub struct WalkDir<F> {
-    filter: F,
-    rdirs: Vec<PathBuf>,
+pub struct WalkDirStream<F> {
+    state: State<F>,
 }
 
-impl<F> WalkDir<F>
-where
-    F: Fn(&Path) -> Result<bool>,
-{
+impl<F> WalkDirStream<F> {
     pub fn new<P>(path: P, filter: F) -> Self
     where
         P: Into<PathBuf>,
     {
-        WalkDir { filter, rdirs: vec![path.into()] }
-    }
-
-    pub fn find_repo_dirs(self) -> Result<Vec<PathBuf>> {
-        let Self { mut rdirs, .. } = self;
-        let mut repos = vec![];
-
-        while let Some(dir) = rdirs.pop() {
-            let mut rd = read_dir(dir)?;
-            while let Some(entry) = rd.next() {
-                let path = entry?.path();
-                if !path.is_dir() {
-                    continue;
-                }
-                if (self.filter)(&path)? {
-                    repos.push(path);
-                } else {
-                    rdirs.push(path);
-                }
-            }
-        }
-
-        Ok(repos)
-    }
-
-    pub fn into_stream(self) -> WalkDirStream<F> {
-        let Self { filter, rdirs } = self;
-        let walker = Walker { filter, rdirs, repos: vec![] };
+        let walker = Walker::new(path, filter);
         let state = State::Idle(ManuallyDrop::new(walker));
         WalkDirStream { state }
     }
-}
-
-#[derive(Debug)]
-pub struct WalkDirStream<F> {
-    state: State<F>,
 }
 
 impl<F> Drop for WalkDirStream<F> {
@@ -93,6 +51,15 @@ struct Walker<F> {
     repos: Vec<PathBuf>,
 }
 
+impl<F> Walker<F> {
+    pub fn new<P>(path: P, filter: F) -> Self
+    where
+        P: Into<PathBuf>,
+    {
+        Self { filter, rdirs: vec![path.into()], repos: vec![] }
+    }
+}
+
 impl<F> FnOnce<Nil> for Walker<F>
 where
     F: Fn(&Path) -> Result<bool>,
@@ -100,7 +67,6 @@ where
     type Output = Result<Self>;
 
     extern "rust-call" fn call_once(mut self, _: Nil) -> Self::Output {
-        use std::fs::read_dir;
         while let Some(dir) = self.rdirs.pop() {
             let mut rd = read_dir(dir)?;
             while let Some(entry) = rd.next() {

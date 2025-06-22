@@ -44,12 +44,6 @@ impl Execute for Executor {
             Event::List(list) => {
                 let walkdir = WalkDir::new(list.path, |p| Gnu::is_git_repo(p));
 
-                // let repos = walkdir.find_repo_dirs()?;
-                // let mut iter = repos.iter();
-                // while let Some(repo) = iter.next() {
-                //     debug!(?repo)
-                // }
-
                 let mut stream = walkdir.into_stream();
                 while let Some(repo) = stream.next().await {
                     let repo = repo?;

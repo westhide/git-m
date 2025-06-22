@@ -60,7 +60,7 @@ where
         let handle = spawn(async move {
             info!("eventloop running");
             while let Some(event) = rx.recv().await {
-                executor.execute(event).await;
+                executor.execute(event).await?;
             }
             info!("eventloop closing");
             Ok(nil)
