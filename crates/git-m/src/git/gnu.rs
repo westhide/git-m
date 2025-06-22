@@ -1,10 +1,17 @@
-pub mod gnu;
-
 use std::path::PathBuf;
 
-use crate::error::Result;
+use crate::{error::Result, git::Git};
 
-pub trait Git {
+#[derive(Debug)]
+pub struct Gnu;
+
+impl Gnu {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Git for Gnu {
     fn is_git_repo<P>(path: P) -> Result<bool>
     where
         P: Into<PathBuf>,

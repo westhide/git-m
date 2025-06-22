@@ -1,1 +1,3 @@
-pub const CONFIG_FILE_NAME: &str = "gitm.toml";
+pub const DOT_DIR: &str = ".";
+
+pub const CONFIG_FILE: &str = "gitm.toml";

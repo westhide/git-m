@@ -5,13 +5,13 @@ use clap::{Parser, Subcommand};
 
 use crate::{
     cli::{init::Init, list::List},
-    constant::CONFIG_FILE_NAME,
+    constant::CONFIG_FILE,
 };
 
 #[derive(Debug, Parser)]
 #[command(about, version, propagate_version = true)]
 pub struct Cli {
-    #[arg(long, default_value = CONFIG_FILE_NAME, help = "config file")]
+    #[arg(long, default_value = CONFIG_FILE, help = "config file")]
     pub config: String,
 
     #[command(subcommand)]

@@ -1,9 +1,14 @@
+use std::sync::Arc;
+
+use futures::StreamExt;
 use nill::{Nil, nil};
 
 use crate::{
     cli::{Cli, Event},
-    error::Result,
-    event::{event_loop::EventLoop, executor::Executor},
+    error::{Error, Result},
+    event::{event_loop::EventLoop, execute::Execute},
+    fs::walkdir::WalkDir,
+    git::{Git, gnu::Gnu},
     log::{debug, instrument},
     runtime::{
         Runtime,
@@ -11,36 +16,65 @@ use crate::{
     },
 };
 
-#[derive(Debug)]
-pub struct ExecutorImpl {}
+#[derive(Debug, Clone)]
+pub struct Executor {
+    ctx: Arc<Context>,
+}
 
-impl ExecutorImpl {
-    pub fn new() -> Self {
-        Self {}
+impl Executor {
+    pub fn new(ctx: Arc<Context>) -> Self {
+        Self { ctx }
     }
 }
 
-impl Executor for ExecutorImpl {
+unsafe impl Send for Event {}
+
+impl Execute for Executor {
     type Event = Event;
+    type Return = Result<Nil, Error>;
 
-    #[instrument]
-    fn execute(&self, event: Self::Event) {
-        debug!("Execute: event: {event:?}");
+    #[instrument(skip(self))]
+    async fn execute(&mut self, event: Self::Event) -> Self::Return {
+        debug!(?self.ctx);
+
         match event {
-            Event::Init(init) => { /* TODO: Implement init event handling */ },
-            Event::List(list) => { /* TODO: Implement list event handling */ },
+            Event::Init(init) => {
+                todo!()
+            },
+            Event::List(list) => {
+                let walkdir = WalkDir::new(list.path, |p| Gnu::is_git_repo(p));
+
+                // let repos = walkdir.find_repo_dirs()?;
+                // let mut iter = repos.iter();
+                // while let Some(repo) = iter.next() {
+                //     debug!(?repo)
+                // }
+
+                let mut stream = walkdir.into_stream();
+                while let Some(repo) = stream.next().await {
+                    let repo = repo?;
+                    debug!(?repo)
+                }
+            },
         }
+
+        Ok(nil)
     }
 }
 
-pub fn run(cli: Cli) -> Result<Nil> {
+pub async fn run(cli: Cli) -> Result<Nil> {
     let opts = Opts { config: cli.config.clone() };
-    let cx = Context::new(opts);
-    let executor = ExecutorImpl::new();
-    let evloop = EventLoop::new(executor);
-    let mut rt = Runtime::new(cx, evloop);
-    rt.startup();
-    rt.submit(cli.event)?;
+    let ctx = Context::new(opts);
+    let evloop = EventLoop::new();
+    let mut rt = Runtime::new(ctx, evloop);
+
+    rt.evloop.startup(Executor::new(rt.ctx.clone()));
+    rt.evloop.push(cli.event).await?;
+    rt.evloop.release();
+
+    if let Some(handle) = rt.evloop.handle {
+        handle.await??;
+    }
 
     Ok(nil)
 }

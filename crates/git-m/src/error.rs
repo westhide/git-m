@@ -1,7 +1,12 @@
+use std::io::Error as StdIoError;
+
 use tokio::task::JoinError as TokioTaskJoinError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
+    StdIoError(#[from] StdIoError),
+
     #[error(transparent)]
     TokioTaskJoinError(#[from] TokioTaskJoinError),
 
