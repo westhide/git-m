@@ -7,10 +7,5 @@ use crate::error::Result;
 pub trait Git {
     fn is_git_repo<P>(path: P) -> Result<bool>
     where
-        P: Into<PathBuf>,
-    {
-        let mut dir = path.into();
-        dir.push(".git");
-        Ok(dir.try_exists()?)
-    }
+        P: Into<PathBuf>;
 }

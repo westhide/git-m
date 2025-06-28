@@ -42,12 +42,10 @@ impl Execute for Executor {
                 todo!()
             },
             Event::List(list) => {
-                let walkdir = WalkDir::new(list.path, |p| Gnu::is_git_repo(p));
-
-                let mut stream = walkdir.into_stream();
-                while let Some(repo) = stream.next().await {
+                let mut walkdir = WalkDir::new(list.path, |p| Gnu::is_git_repo(p));
+                while let Some(repo) = walkdir.next().await {
                     let repo = repo?;
-                    debug!(?repo)
+                    // debug!(?repo)
                 }
             },
         }

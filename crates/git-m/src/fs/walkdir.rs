@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     fs::read_dir,
     mem::ManuallyDrop,
     path::{Path, PathBuf},
@@ -10,38 +11,14 @@ use futures::Stream;
 use nill::{Nil, Nill};
 use tokio::task::{JoinHandle, spawn_blocking};
 
-use crate::error::Result;
+use crate::{
+    error::Result,
+    log::{Level, instrument},
+};
 
-#[derive(Debug)]
-pub struct WalkDirStream<F> {
-    state: State<F>,
-}
-
-impl<F> WalkDirStream<F> {
-    pub fn new<P>(path: P, filter: F) -> Self
-    where
-        P: Into<PathBuf>,
-    {
-        let walker = Walker::new(path, filter);
-        let state = State::Idle(ManuallyDrop::new(walker));
-        WalkDirStream { state }
-    }
-}
-
-impl<F> Drop for WalkDirStream<F> {
-    fn drop(&mut self) {
-        if let State::Idle(walker) = &mut self.state {
-            unsafe { ManuallyDrop::drop(walker) }
-        }
-    }
-}
-
-impl<F> Unpin for WalkDirStream<F> {}
-
-#[derive(Debug)]
-enum State<F> {
-    Idle(ManuallyDrop<Walker<F>>),
-    Pend(JoinHandle<Result<Walker<F>>>),
+#[derive(Debug, Default)]
+pub struct Options {
+    pub batch: u32,
 }
 
 #[derive(Debug)]
@@ -52,6 +29,8 @@ struct Walker<F> {
 }
 
 impl<F> Walker<F> {
+    const BATCH_SIZE: usize = 256;
+
     pub fn new<P>(path: P, filter: F) -> Self
     where
         P: Into<PathBuf>,
@@ -66,6 +45,7 @@ where
 {
     type Output = Result<Self>;
 
+    #[instrument(level=Level::TRACE, skip_all)]
     extern "rust-call" fn call_once(mut self, _: Nil) -> Self::Output {
         while let Some(dir) = self.rdirs.pop() {
             let mut rd = read_dir(dir)?;
@@ -80,18 +60,57 @@ where
                     self.rdirs.push(path);
                 }
             }
+            if self.repos.len() > Self::BATCH_SIZE {
+                break;
+            }
         }
         Ok(self)
     }
 }
 
-impl<F> Stream for WalkDirStream<F>
+#[derive(Debug)]
+enum State<F> {
+    Idle(ManuallyDrop<Walker<F>>),
+    Pend(JoinHandle<Result<Walker<F>>>),
+}
+
+#[derive(Debug)]
+pub struct WalkDir<F> {
+    state: State<F>,
+}
+
+impl<F> WalkDir<F>
+where
+    F: Fn(&Path) -> Result<bool>,
+{
+    pub fn new<P>(path: P, filter: F) -> Self
+    where
+        P: Into<PathBuf>,
+    {
+        let walker = Walker::new(path, filter);
+        let state = State::Idle(ManuallyDrop::new(walker));
+        Self { state }
+    }
+}
+
+impl<F> Drop for WalkDir<F> {
+    fn drop(&mut self) {
+        if let State::Idle(walker) = &mut self.state {
+            unsafe { ManuallyDrop::drop(walker) }
+        }
+    }
+}
+
+impl<F> Unpin for WalkDir<F> {}
+
+impl<F> Stream for WalkDir<F>
 where
     F: Send + 'static,
     F: Fn(&Path) -> Result<bool>,
 {
     type Item = Result<PathBuf>;
 
+    #[instrument(level=Level::TRACE, skip_all, ret)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
             let state = match &mut self.state {
