@@ -5,11 +5,12 @@ use nill::{Nil, nil};
 
 use crate::{
     cli::{Cli, Event},
+    config::{Config, codehub::CodeHub, gdir::Gdir},
     error::{Error, Result},
     event::{event_loop::EventLoop, execute::Execute},
     fs::walkdir::WalkDir,
-    git::{Git, gnu::Gnu},
-    log::{debug, instrument},
+    git::{Git, IGit},
+    log::{debug, info, instrument},
     runtime::{
         Runtime,
         context::{Context, opts::Opts},
@@ -42,11 +43,17 @@ impl Execute for Executor {
                 todo!()
             },
             Event::List(list) => {
-                let mut walkdir = WalkDir::new(list.path, |p| Gnu::is_git_repo(p));
-                while let Some(repo) = walkdir.next().await {
-                    let repo = repo?;
-                    // debug!(?repo)
+                let mut walkdir = WalkDir::new(&list.path, Git::open);
+                let mut hub = CodeHub::new(&list.path);
+                while let Some(gdir) = walkdir.next().await {
+                    let g: Gdir = gdir?.into();
+                    hub.push(g);
                 }
+                let mut config = Config::from(hub);
+                debug!(?config);
+                let toml = config.encode()?;
+                info!(toml);
+                println!("{toml}");
             },
         }
 

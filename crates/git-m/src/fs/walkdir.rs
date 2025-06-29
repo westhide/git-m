@@ -22,45 +22,44 @@ pub struct Options {
 }
 
 #[derive(Debug)]
-struct Walker<F> {
-    filter: F,
+struct Walk<T, F> {
+    filt: F,
     rdirs: Vec<PathBuf>,
-    repos: Vec<PathBuf>,
+    items: Vec<T>,
 }
 
-impl<F> Walker<F> {
+impl<T, F> Walk<T, F> {
     const BATCH_SIZE: usize = 256;
 
-    pub fn new<P>(path: P, filter: F) -> Self
+    pub fn new<P>(path: P, filt: F) -> Self
     where
         P: Into<PathBuf>,
     {
-        Self { filter, rdirs: vec![path.into()], repos: vec![] }
+        Self { filt, rdirs: vec![path.into()], items: Default::default() }
     }
 }
 
-impl<F> FnOnce<Nil> for Walker<F>
+impl<T, F> FnOnce<Nil> for Walk<T, F>
 where
-    F: Fn(&Path) -> Result<bool>,
+    F: Fn(&Path) -> Result<Option<T>>,
 {
     type Output = Result<Self>;
 
-    #[instrument(level=Level::TRACE, skip_all)]
+    #[instrument(level=Level::TRACE, skip_all, err)]
     extern "rust-call" fn call_once(mut self, _: Nil) -> Self::Output {
-        while let Some(dir) = self.rdirs.pop() {
-            let mut rd = read_dir(dir)?;
+        while let Some(rdir) = self.rdirs.pop() {
+            let mut rd = read_dir(rdir)?;
             while let Some(entry) = rd.next() {
                 let path = entry?.path();
                 if !path.is_dir() {
                     continue;
                 }
-                if (self.filter)(&path)? {
-                    self.repos.push(path);
-                } else {
-                    self.rdirs.push(path);
+                match (self.filt)(&path)? {
+                    Some(item) => self.items.push(item),
+                    None => self.rdirs.push(path),
                 }
             }
-            if self.repos.len() > Self::BATCH_SIZE {
+            if self.items.len() > Self::BATCH_SIZE {
                 break;
             }
         }
@@ -69,64 +68,67 @@ where
 }
 
 #[derive(Debug)]
-enum State<F> {
-    Idle(ManuallyDrop<Walker<F>>),
-    Pend(JoinHandle<Result<Walker<F>>>),
+enum State<T, F> {
+    Idle(ManuallyDrop<Walk<T, F>>),
+    Pend(JoinHandle<Result<Walk<T, F>>>),
 }
 
 #[derive(Debug)]
-pub struct WalkDir<F> {
-    state: State<F>,
+pub struct WalkDir<T, F> {
+    state: State<T, F>,
 }
 
-impl<F> WalkDir<F>
+impl<T, F> WalkDir<T, F>
 where
-    F: Fn(&Path) -> Result<bool>,
+    // TODO: #![feature(non_lifetime_binders)]
+    F: Fn(&Path) -> Result<Option<T>>,
 {
-    pub fn new<P>(path: P, filter: F) -> Self
+    pub fn new<P>(path: P, filt: F) -> Self
     where
         P: Into<PathBuf>,
     {
-        let walker = Walker::new(path, filter);
-        let state = State::Idle(ManuallyDrop::new(walker));
+        let walk = Walk::new(path, filt);
+        let state = State::Idle(ManuallyDrop::new(walk));
         Self { state }
     }
 }
 
-impl<F> Drop for WalkDir<F> {
+impl<T, F> Drop for WalkDir<T, F> {
     fn drop(&mut self) {
-        if let State::Idle(walker) = &mut self.state {
-            unsafe { ManuallyDrop::drop(walker) }
+        if let State::Idle(walk) = &mut self.state {
+            unsafe { ManuallyDrop::drop(walk) }
         }
     }
 }
 
-impl<F> Unpin for WalkDir<F> {}
+impl<T, F> Unpin for WalkDir<T, F> {}
 
-impl<F> Stream for WalkDir<F>
+impl<T, F> Stream for WalkDir<T, F>
 where
+    T: Debug,
+    T: Send + 'static,
     F: Send + 'static,
-    F: Fn(&Path) -> Result<bool>,
+    F: Fn(&Path) -> Result<Option<T>>,
 {
-    type Item = Result<PathBuf>;
+    type Item = Result<T>;
 
     #[instrument(level=Level::TRACE, skip_all, ret)]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
             let state = match &mut self.state {
-                State::Idle(walker) => {
-                    if let Some(repo) = walker.repos.pop() {
-                        return Poll::Ready(Some(Ok(repo)))
+                State::Idle(walk) => {
+                    if let Some(item) = walk.items.pop() {
+                        return Poll::Ready(Some(Ok(item)))
                     }
-                    if walker.rdirs.nil() {
+                    if walk.rdirs.nil() {
                         return Poll::Ready(None)
                     }
-                    let task = unsafe { ManuallyDrop::take(walker) };
+                    let task = unsafe { ManuallyDrop::take(walk) };
                     State::Pend(spawn_blocking(task))
                 },
                 State::Pend(rx) => {
-                    let walker = ready!(Pin::new(rx).poll(cx))??;
-                    State::Idle(ManuallyDrop::new(walker))
+                    let walk = ready!(Pin::new(rx).poll(cx))??;
+                    State::Idle(ManuallyDrop::new(walk))
                 },
             };
             self.state = state;

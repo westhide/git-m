@@ -1,11 +1,15 @@
-pub mod gnu;
+mod gnu;
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::error::Result;
+pub trait IGit
+where
+    Self: Sized,
+{
+    fn open(path: &Path) -> Result<Option<Self>>;
 
-pub trait Git {
-    fn is_git_repo<P>(path: P) -> Result<bool>
-    where
-        P: Into<PathBuf>;
+    fn workdir(&self) -> &Path;
 }
+
+pub use gnu::Git;

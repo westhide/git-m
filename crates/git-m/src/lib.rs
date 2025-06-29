@@ -4,12 +4,14 @@
 
 extern crate test;
 
+mod libs;
+
 pub mod cli;
+pub mod config;
 pub mod constant;
 pub mod event;
 pub mod fs;
 pub mod git;
-pub mod libs;
 pub mod runner;
 pub mod runtime;
 pub mod worker;
