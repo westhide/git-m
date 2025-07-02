@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 use crate::config::gdir::Gdir;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CodeHub {
+pub struct Hub {
     pub base: PathBuf,
     pub dirs: Vec<Gdir>,
 }
 
-impl CodeHub {
+impl Hub {
     pub fn new<P>(path: P) -> Self
     where
         P: Into<PathBuf>,

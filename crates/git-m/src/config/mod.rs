@@ -1,17 +1,17 @@
-pub mod codehub;
 pub mod gdir;
+pub mod hub;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{config::codehub::CodeHub, error::Result};
+use crate::{config::hub::Hub, error::Result};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-    pub hubs: Vec<CodeHub>,
+    pub hubs: Vec<Hub>,
 }
 
 impl Config {
-    pub fn push(&mut self, hub: CodeHub) {
+    pub fn push(&mut self, hub: Hub) {
         self.hubs.push(hub);
     }
 
@@ -21,16 +21,16 @@ impl Config {
     }
 }
 
-impl From<CodeHub> for Config {
-    fn from(hub: CodeHub) -> Self {
+impl From<Hub> for Config {
+    fn from(hub: Hub) -> Self {
         Self { hubs: vec![hub] }
     }
 }
 
-impl FromIterator<CodeHub> for Config {
+impl FromIterator<Hub> for Config {
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = CodeHub>,
+        T: IntoIterator<Item = Hub>,
     {
         Self { hubs: iter.into_iter().collect() }
     }

@@ -5,8 +5,8 @@ use nill::{Nil, nil};
 
 use crate::{
     cli::{Cli, Event},
-    config::{Config, codehub::CodeHub, gdir::Gdir},
-    error::{Error, Result},
+    config::{Config, gdir::Gdir, hub::Hub},
+    error::Result,
     event::{event_loop::EventLoop, execute::Execute},
     fs::walkdir::WalkDir,
     git::{Git, IGit},
@@ -32,7 +32,7 @@ unsafe impl Send for Event {}
 
 impl Execute for Executor {
     type Event = Event;
-    type Return = Result<Nil, Error>;
+    type Return = Result<Nil>;
 
     #[instrument(skip(self))]
     async fn execute(&mut self, event: Self::Event) -> Self::Return {
@@ -44,7 +44,7 @@ impl Execute for Executor {
             },
             Event::List(list) => {
                 let mut walkdir = WalkDir::new(&list.path, Git::open);
-                let mut hub = CodeHub::new(&list.path);
+                let mut hub = Hub::new(&list.path);
                 while let Some(gdir) = walkdir.next().await {
                     let g: Gdir = gdir?.into();
                     hub.push(g);
@@ -64,16 +64,11 @@ impl Execute for Executor {
 pub async fn run(cli: Cli) -> Result<Nil> {
     let opts = Opts { config: cli.config.clone() };
     let ctx = Context::new(opts);
-    let evloop = EventLoop::new();
-    let mut rt = Runtime::new(ctx, evloop);
+    let rt = Runtime::new(ctx);
 
-    rt.evloop.startup(Executor::new(rt.ctx.clone()));
-    rt.evloop.push(cli.event).await?;
-    rt.evloop.release();
-
-    if let Some(handle) = rt.evloop.handle {
-        handle.await??;
-    }
+    let mut handler = EventLoop::startup(Executor::new(rt.ctx.clone()));
+    handler.push(cli.event).await;
+    handler.into_handle().await??;
 
     Ok(nil)
 }

@@ -1,6 +1,5 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, mem::ManuallyDrop};
 
-use nill::{Nil, nil};
 use tokio::{
     spawn,
     sync::mpsc::{Sender, channel},
@@ -8,65 +7,56 @@ use tokio::{
 };
 
 use crate::{
-    error::{Result, err},
+    error::Result,
     event::execute::Execute,
     log::{error, info},
 };
 
 #[derive(Debug)]
-pub struct EventLoop<E, R = Result<Nil>> {
-    pub(super) tx: Option<Sender<E>>,
-    pub handle: Option<JoinHandle<R>>,
+pub struct EventLoop<E, R> {
+    tx: Sender<E>,
+    hd: JoinHandle<R>,
 }
 
-impl<E, R> EventLoop<E, R> {
-    pub fn new() -> Self {
-        Self { tx: None, handle: None }
-    }
-
-    pub fn sender(&self) -> Result<&Sender<E>> {
-        match &self.tx {
-            Some(tx) => Ok(tx),
-            None => err!("eventloop sender not exist"),
-        }
-    }
-
-    pub async fn push(&mut self, event: E) -> Result<Option<E>> {
-        if let Err(err) = self.sender()?.send(event).await {
-            error!("eventloop push fail, {err:?}");
-            Ok(Some(err.0))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn release(&mut self) -> Option<Sender<E>> {
-        self.tx.take()
-    }
-}
-
-impl<E> EventLoop<E>
+impl<T, EE, ER> EventLoop<EE::Event, Result<EE, ER>>
 where
-    E: Send + 'static,
+    EE: Send + 'static,
+    ER: Send + 'static,
+    EE: Execute<Return = Result<T, ER>>,
+    EE::Event: Send,
 {
-    pub fn startup<T>(&mut self, mut executor: T)
-    where
-        T: Send + 'static,
-        T: Execute<Event = E, Return = Result<Nil>>,
-    {
+    pub fn startup(mut executor: EE) -> Self {
         // TODO: Infer cpu cores
-        let (tx, mut rx) = channel::<E>(10);
+        let (tx, mut rx) = channel(10);
 
-        let handle = spawn(async move {
+        let hd = spawn(async move {
             info!("eventloop running");
             while let Some(event) = rx.recv().await {
                 executor.execute(event).await?;
             }
             info!("eventloop closing");
-            Ok(nil)
+            Ok(executor)
         });
 
-        self.tx = Some(tx);
-        self.handle = Some(handle);
+        Self { tx, hd }
+    }
+}
+
+impl<E, R> EventLoop<E, R> {
+    pub fn sender(&self) -> &Sender<E> {
+        &self.tx
+    }
+
+    pub async fn push(&mut self, event: E) -> Option<E> {
+        if let Err(err) = self.tx.send(event).await {
+            error!("eventloop push fail, {err:?}");
+            Some(err.0)
+        } else {
+            None
+        }
+    }
+
+    pub fn into_handle(self) -> JoinHandle<R> {
+        self.hd
     }
 }

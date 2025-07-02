@@ -13,7 +13,5 @@ pub async fn main() -> Result<Nil> {
     debug!("Git Mono");
     let cli = Cli::default();
 
-    run(cli).await?;
-
-    Ok(nil)
+    run(cli).await
 }
